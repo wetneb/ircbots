@@ -134,6 +134,8 @@ main = do
     Just url -> do
       title <- fetchTitle url
       case title of
-        Just title -> putStrLn . decodeString $ title
+        Just title -> do
+          putStrLn . decodeString $ title
+          hFlush stdout
         Nothing -> return ()
       main
