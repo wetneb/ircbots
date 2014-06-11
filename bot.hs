@@ -19,10 +19,10 @@ import Text.HTML.TagSoup.Entity (lookupEntity)
 
 unescapeEntities :: String -> String
 unescapeEntities [] = []
-unescapeEntities ('&':xs) = 
+unescapeEntities ('&':xs) =
   let (b, a) = break (== ';') xs in
   case (lookupEntity b, a) of
-    (Just c, ';':as) ->  c  : unescapeEntities as    
+    (Just c, ';':as) ->  c  : unescapeEntities as
     _                -> '&' : unescapeEntities xs
 unescapeEntities (x:xs) = x : unescapeEntities xs
 
@@ -62,11 +62,11 @@ followRedirections request hopsRemaining = do
     getHostFromRequest :: (Request String) -> Maybe String
     getHostFromRequest req =
       (uriAuthority . rqURI $ req) >>= return . printURIAuth
-      
+
     -- Show an URI auth in the right format
     printURIAuth :: URIAuth -> String
     printURIAuth (URIAuth a b c) = a ++ b ++ c
-    
+
     -- Parse a response and send a new request if needed
     tryAgain :: String -> Response String -> IO (Maybe (Response String))
     tryAgain host response = do
@@ -76,9 +76,9 @@ followRedirections request hopsRemaining = do
         (2,_,_) -> return $ Just response
         (3,_,_) -> case nextReq of
           Nothing -> return Nothing
-          Just req -> followRedirections req (hopsRemaining-1) 
+          Just req -> followRedirections req (hopsRemaining-1)
         _ -> throw . userError $ printf "Got HTTP response code %d%d%d" d1 d2 d3
-        
+
     -- Get the redirection URL in an HTTP 30* response for a specific host
     getRedirectURL :: String -> Response String -> Maybe String
     getRedirectURL host response = do
@@ -95,8 +95,8 @@ followRedirections request hopsRemaining = do
     getRedirectReq host response =
       return $ (getRedirectURL host response) >>= (return . getRequest)
       -- TODO catch exceptions
-            
-      
+
+
 -- Keep only the documents that have the correct MIME type
 -- If it has the correct MIME type, return the body of the response
 filterByHeader :: (Response String) -> Maybe String
