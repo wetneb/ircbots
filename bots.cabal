@@ -13,6 +13,6 @@ source-repository head
 
 executable bot
     main-is:        bot.hs
-    ghc-options:    -O2 -main-is bot.hs
-    build-depends:  base, containers, mtl
+    ghc-options:    -O2 -XDoAndIfThenElse
+    build-depends:  base, containers, mtl, tagsoup, HTTP, regex-compat, network, utf8-string
 
