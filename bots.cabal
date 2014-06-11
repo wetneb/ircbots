@@ -13,6 +13,7 @@ source-repository head
 
 executable bot
     main-is:        bot.hs
-    ghc-options:    -O2 -XDoAndIfThenElse
+    ghc-options:    -O2
+    extensions:     DoAndIfThenElse
     build-depends:  base, containers, mtl, tagsoup, HTTP, regex-compat, network, utf8-string
 
