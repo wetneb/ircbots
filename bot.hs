@@ -22,6 +22,8 @@ unescapeEntities ('&':xs) =
     (Just c, ';':as) ->  c  : unescapeEntities as    
     _                -> '&' : unescapeEntities xs
 unescapeEntities (x:xs) = x : unescapeEntities xs
+
+-- Perhaps replace with 'hush' from the 'errors' package?
 eitherToMaybe (Left _) = Nothing
 eitherToMaybe (Right x) = Just x
 
@@ -31,6 +33,7 @@ logError str =
   hPutStr stderr (str ++ "\n")
 
 -- Maximum number of HTTP redirections
+maxHops :: Int
 maxHops = 5
 
 -- Fetch a document via HTTP by following up to maxHops redirections
@@ -42,8 +45,9 @@ commuteMaybeIO :: Maybe (IO (Maybe a)) -> IO (Maybe a)
 commuteMaybeIO Nothing = return Nothing
 commuteMaybeIO (Just x) = x
 
--- Helper function for the latter
-followRedirections request 0 = throw . userError $ "Maximum number of hops reached."
+-- Helper function for the latte
+followRedirections :: Request String -> Int -> IO (Maybe (Response String))
+followRedirections _       0 = throw . userError $ "Maximum number of hops reached."
 followRedirections request hopsRemaining = do
   response <- simpleHTTP request
   commuteMaybeIO $ do
@@ -104,6 +108,7 @@ filterByHeader response =
     isTextHTML _ = False
 
 -- Regex used to find the title in the body
+titleRegex :: Regex
 titleRegex = mkRegex "<title>(.*)</title>"
 
 -- Find the title in the body (if any)
@@ -128,6 +133,7 @@ fetchTitle url = do
       return Nothing
 
 -- Regex used to detect URLs in messages
+urlRegex :: Regex
 urlRegex = mkRegex "(https?://[^ ]*)"
 
 -- Find an URL in the message
@@ -135,6 +141,7 @@ getURL :: String -> Maybe String
 getURL message =
   matchRegex urlRegex message >>= listToMaybe
 
+main :: IO ()
 main = do
   message <- getLine
   let mURL = getURL message
