@@ -12,25 +12,13 @@ import Data.Foldable (forM_)
 import Data.Maybe
 import Data.List
 import System.IO
-import System.IO.Error
-import Text.Printf
 import Text.Regex.TDFA
 
 import Control.Lens
 -- import qualified Data.Text.ICU as ICU
 import Network.HTTP.Client (HttpException)
 import Network.Wreq
-import Text.HTML.TagSoup.Entity (lookupEntity)
-
-
--- unescapeEntities :: String -> String
--- unescapeEntities [] = []
--- unescapeEntities ('&':xs) = 
---   let (b, a) = break (== ';') xs in
---   case (lookupEntity b, a) of
---     (Just c, ';':as) ->  c  : unescapeEntities as    
---     _                -> '&' : unescapeEntities xs
--- unescapeEntities (x:xs) = x : unescapeEntities xs
+import Text.HTML.TagSoup
 
 -- Error logging to stderr
 logError :: String -> IO ()
@@ -55,13 +43,18 @@ getURL message = message =~~ urlRegex
         urlRegex = "(https?://[^ ]*)"
         
 -- Find the title in the body (if any)
-getTitle :: BL.ByteString -> Maybe BL.ByteString
-getTitle bytes = bytes =~~ titleRegex
-  where titleRegex :: String
-        titleRegex = "<title>(.*)</title>"
-        
+getTitle :: BL.ByteString -> Maybe T.Text
+getTitle bytes = do
+  let tags = parseTags . decodeUtf8 $ bytes
+  -- that's what the fail method in Monad is used for!
+  -- (but it should really be mzero from MonadPlus)
+  -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
+  (_:tags') <- return $ dropWhile (not . isTagOpenName "title") tags
+  (TagText title:_) <- return $ dropWhile (not . isTagText) tags'
+  return title
 
 -- Fetch the title of a given URL (if any…)
+fetchTitle :: String -> IO (Maybe T.Text)
 fetchTitle url = do
   response <- handle handleException $ Just <$> getWith httpOptions url
   return $ response >>= filterByHeader >>= getTitle
@@ -77,7 +70,6 @@ main = forever $ do
   forM_ messageURL $ \url -> do
     title <- fetchTitle url
     forM_ title $ \t -> do
-      -- TODO: unescape entities
-      TIO.putStrLn . decodeUtf8 $ t
+      TIO.putStrLn t
       hFlush stdout
 
