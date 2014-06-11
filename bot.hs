@@ -12,7 +12,16 @@ import Text.Regex
 import Text.Printf
 import GHC.IO.Handle.FD
 import GHC.IO.Handle
+import Text.HTML.TagSoup.Entity (lookupEntity)
 
+unescapeEntities :: String -> String
+unescapeEntities [] = []
+unescapeEntities ('&':xs) = 
+  let (b, a) = break (== ';') xs in
+  case (lookupEntity b, a) of
+    (Just c, ';':as) ->  c  : unescapeEntities as    
+    _                -> '&' : unescapeEntities xs
+unescapeEntities (x:xs) = x : unescapeEntities xs
 eitherToMaybe (Left _) = Nothing
 eitherToMaybe (Right x) = Just x
 
@@ -135,7 +144,7 @@ main = do
       title <- fetchTitle url
       case title of
         Just title -> do
-          putStrLn . decodeString $ title
+          putStrLn . unescapeEntities . decodeString $ title
           hFlush stdout
         Nothing -> return ()
       main
