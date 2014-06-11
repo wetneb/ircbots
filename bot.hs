@@ -140,7 +140,7 @@ urlRegex :: Regex
 urlRegex = mkRegex "(https?://[^ ]*)"
 
 -- Find an URL in the message
-getURL :: String -> Maybe String
+getURL :: String -> Maybe (Maybe String)
 getURL message =
   matchRegex urlRegex message >>= listToMaybe
 
