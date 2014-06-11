@@ -11,9 +11,15 @@ source-repository head
   type:     git
   location: git://github.com/wetneb/ircbots.git
 
-executable bot
-    main-is:        bot.hs
+-- executable bot
+--     main-is:        bot.hs
+--     ghc-options:    -O2
+--     extensions:     DoAndIfThenElse
+--     build-depends:  base, containers, mtl, tagsoup, HTTP, regex-compat, network, utf8-string
+
+executable hurl
+    main-is:        hurl.hs
     ghc-options:    -O2
     extensions:     DoAndIfThenElse
-    build-depends:  base, containers, mtl, tagsoup, HTTP, regex-compat, network, utf8-string
+    build-depends:  base, containers, mtl, tagsoup, regex-tdfa, wreq, http-client, lens, text, bytestring
 
