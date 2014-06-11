@@ -1,3 +1,5 @@
+import Control.Applicative
+import Control.Monad hiding (forM_)
 import Codec.Binary.UTF8.String
 import Network.HTTP.Headers
 import Network.HTTP
@@ -6,6 +8,7 @@ import Network.Stream
 import Network.URI
 import Data.Maybe
 import Data.List
+import Data.Foldable (forM_)
 import System.IO.Error
 import Control.Exception
 import Text.Regex
@@ -142,16 +145,11 @@ getURL message =
   matchRegex urlRegex message >>= listToMaybe
 
 main :: IO ()
-main = do
-  message <- getLine
-  let mURL = getURL message
-  case mURL of
-    Nothing -> main
-    Just url -> do
-      title <- fetchTitle url
-      case title of
-        Just title -> do
-          putStrLn . unescapeEntities . decodeString $ title
-          hFlush stdout
-        Nothing -> return ()
-      main
+main = forever $ do
+  messageURL <- getURL <$> getLine
+  forM_ messageURL $ \url -> do
+    title <- fetchTitle url
+    forM_ title $ \t -> do
+      putStrLn . unescapeEntities . decodeString $ t
+      hFlush stdout
+
