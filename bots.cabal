@@ -19,7 +19,7 @@ source-repository head
 
 executable hurl
     main-is:        hurl.hs
-    ghc-options:    -O2
+    ghc-options:    -O2 -optl-static -optl-pthread
     extensions:     DoAndIfThenElse
     build-depends:  base, containers, mtl, tagsoup, regex-tdfa, wreq, http-client, lens, text, bytestring
 
