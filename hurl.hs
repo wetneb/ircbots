@@ -22,7 +22,7 @@ import Control.Lens
 import Network.HTTP.Client (HttpException)
 import Network.Wreq
 import Text.HTML.TagSoup
-import Pdf.Toolbox.Document
+import Text.PDF.Info
 
 -- Error logging to stderr
 logError :: String -> IO ()
@@ -63,18 +63,11 @@ getPDFTitle :: String -> IO (Maybe T.Text)
 getPDFTitle url = do
   r <- requestMaybe (getWith httpOptions url)
   fmap join . forM r $ \r' -> do
-    BL.writeFile "temp.pdf" $ r' ^. responseBody
-    withBinaryFile "temp.pdf" ReadMode $ \h -> do
-      x <- runPdfWithHandle h knownFilters $ do
-        info <- documentInfo =<< document
-        join <$> forM info infoTitle
-      case x of
-        Right (Just (Str bs)) -> case SE.decodeUtf8' bs of
-          Right txt -> return $ Just txt
-          -- decodeLatin1 should not raise exceptions
-          Left _ -> return . Just . SE.decodeLatin1 $ bs
-        _ -> return Nothing
-
+    BL.writeFile "/run/ircbots/temp.pdf" $ r' ^. responseBody
+    eitherInfo <- pdfInfo "/run/ircbots/temp.pdf"
+    case eitherInfo of
+      Right info -> return $ pdfInfoTitle info
+      Left err -> Nothing <$ logError (show err)
 
 requestMaybe :: IO a -> IO (Maybe a)
 requestMaybe req = handle handleException $ Just <$> req
