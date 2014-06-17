@@ -4,10 +4,12 @@ import Control.Applicative
 import Control.Monad hiding (forM_, forM)
 import Control.Exception
 import qualified Data.ByteString as BS
--- import qualified Data.ByteString.Lazy as BL
-import qualified Data.Text.Lazy as T
-import qualified Data.Text.Lazy.IO as TIO
-import Data.Text.Lazy.Encoding
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.IO as TIO
+import Data.Text.Lazy.Encoding as LE
+import Data.Text.Encoding as SE
 import Data.Foldable (forM_)
 import Data.Traversable (forM)
 import Data.Maybe
@@ -20,6 +22,7 @@ import Control.Lens
 import Network.HTTP.Client (HttpException)
 import Network.Wreq
 import Text.HTML.TagSoup
+import Pdf.Toolbox.Document
 
 -- Error logging to stderr
 logError :: String -> IO ()
@@ -34,7 +37,7 @@ dispatchByHeader :: String -> Response () -> IO (Maybe T.Text)
 dispatchByHeader url response
   | contentTypeIs "text/html" = getHTMLTitle url
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
-    return $ Just "PDF is not supported yet."
+    getPDFTitle url
   | otherwise = return Nothing
   where contentTypeIs = (`BS.isPrefixOf` (response ^. responseHeader "Content-Type"))
 
@@ -48,13 +51,30 @@ getURL message = message =~~ urlRegex
 getHTMLTitle :: String -> IO (Maybe T.Text)
 getHTMLTitle url = (getTitle =<<) <$> requestMaybe (getWith httpOptions url)
   where getTitle response = do -- in the Maybe monad
-          let tags = parseTags . decodeUtf8 $ response ^. responseBody
+          let tags = parseTags . LE.decodeUtf8 $ response ^. responseBody
           -- that's what the fail method in Monad is used for!
           -- (but it should really be mzero from MonadPlus)
           -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
           (_:tags') <- return $ dropWhile (not . isTagOpenName "title") tags
           (TagText title:_) <- return $ dropWhile (not . isTagText) tags'
-          return title
+          return . head . TL.toChunks $ title
+
+getPDFTitle :: String -> IO (Maybe T.Text)
+getPDFTitle url = do
+  r <- requestMaybe (getWith httpOptions url)
+  fmap join . forM r $ \r' -> do
+    BL.writeFile "temp.pdf" $ r' ^. responseBody
+    withBinaryFile "temp.pdf" ReadMode $ \h -> do
+      x <- runPdfWithHandle h knownFilters $ do
+        info <- documentInfo =<< document
+        join <$> forM info infoTitle
+      case x of
+        Right (Just (Str bs)) -> case SE.decodeUtf8' bs of
+          Right txt -> return $ Just txt
+          -- decodeLatin1 should not raise exceptions
+          Left _ -> return . Just . SE.decodeLatin1 $ bs
+        _ -> return Nothing
+
 
 requestMaybe :: IO a -> IO (Maybe a)
 requestMaybe req = handle handleException $ Just <$> req

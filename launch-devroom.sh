@@ -1,5 +1,5 @@
 #!/bin/sh
 
-cat fifo-devroom | ./irctk hurl@localhost '#devroom' | ./bot > fifo-devroom 2> log-devroom
+cat fifo-devroom | ./irctk hurlbot@localhost '#devroom' | ./bot > fifo-devroom 2> log-devroom
 
 
