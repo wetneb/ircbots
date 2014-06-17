@@ -16,6 +16,8 @@ import Data.Maybe
 import Data.List
 import System.IO
 import Text.Regex.TDFA
+import System.Process (system)
+import System.Exit (ExitCode(..))
 
 import Control.Lens
 -- import qualified Data.Text.ICU as ICU
@@ -66,7 +68,15 @@ getPDFTitle url = do
     BL.writeFile "/run/ircbots/temp.pdf" $ r' ^. responseBody
     eitherInfo <- pdfInfo "/run/ircbots/temp.pdf"
     case eitherInfo of
-      Right info -> return $ pdfInfoTitle info
+      Right info -> case pdfInfoTitle info of
+        Just txt -> return . Just $ txt
+        Nothing -> do
+          -- TODO: handle exceptions
+          exitCode <- system "pdftotext -layout -f 1 -l 1 /run/ircbots/temp.pdf /run/ircbots/temp.txt"
+          case exitCode of
+            ExitFailure _ -> return Nothing
+            ExitSuccess -> do
+              Just <$> TIO.readFile "/run/ircbots/temp.txt"
       Left err -> Nothing <$ logError (show err)
 
 requestMaybe :: IO a -> IO (Maybe a)
