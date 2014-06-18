@@ -45,7 +45,7 @@ dispatchByHeader url response
 getURL :: String -> Maybe String
 getURL message = message =~~ urlRegex
   where urlRegex :: String
-        urlRegex = "(https?://[^ ]*)"
+        urlRegex = "(https?://[^, ]*)"
 
 -- Exclude Wikipedia URLs (the title is in the URL)
 filterWikipedia :: String -> Maybe String
