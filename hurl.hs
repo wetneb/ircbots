@@ -46,7 +46,18 @@ getURL :: String -> Maybe String
 getURL message = message =~~ urlRegex
   where urlRegex :: String
         urlRegex = "(https?://[^ ]*)"
-        
+
+-- Exclude Wikipedia URLs (the title is in the URL)
+filterWikipedia :: String -> Maybe String
+filterWikipedia url
+  | isWiki url = Nothing
+  | otherwise = return url
+ where
+   isWiki :: String -> Bool
+   isWiki str = (str =~~ wikiRegex :: Maybe String) /= Nothing
+   wikiRegex :: String
+   wikiRegex = "\\.wikipedia\\.org/wiki/"
+       
 -- Find the title in the body (if any)
 getHTMLTitle :: String -> IO (Maybe T.Text)
 getHTMLTitle url = (getTitle =<<) <$> requestMaybe (getWith httpOptions url)
@@ -85,7 +96,7 @@ fetchTitle url = do
 
 main :: IO ()
 main = forever $ do
-  messageURL <- getURL <$> getLine
+  messageURL <- (filterWikipedia <=< getURL) <$> getLine
   forM_ messageURL $ \url -> do
     title <- fetchTitle url
     forM_ title $ \t -> do
