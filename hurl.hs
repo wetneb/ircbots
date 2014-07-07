@@ -99,5 +99,6 @@ main = forever $ do
   forM_ messageURL $ \url -> do
     title <- fetchTitle url
     forM_ title $ \t -> do
-      TIO.putStrLn t
+      forM_ (take 3 . T.lines $ t) TIO.putStrLn
       hFlush stdout
+
