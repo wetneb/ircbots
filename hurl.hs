@@ -49,11 +49,18 @@ getURL message = message =~~ urlRegex
   where urlRegex :: String
         urlRegex = "(https?://[^ ]*)"
 
+hush :: Either a b -> Maybe b
+hush (Left _) = Nothing
+hush (Right x) = Just x
+
+safeDecodeUtf8 :: BL.ByteString -> Maybe TL.Text
+safeDecodeUtf8 = hush . LE.decodeUtf8'
+
 -- Find the title in the body (if any)
 getHTMLTitle :: String -> IO (Maybe T.Text)
 getHTMLTitle url = (getTitle =<<) <$> requestMaybe (getWith httpOptions url)
   where getTitle response = do -- in the Maybe monad
-          let tags = parseTags . LE.decodeUtf8 $ response ^. responseBody
+          tags <- parseTags <$> (safeDecodeUtf8 $ response ^. responseBody)
           -- that's what the fail method in Monad is used for!
           -- (but it should really be mzero from MonadPlus)
           -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
