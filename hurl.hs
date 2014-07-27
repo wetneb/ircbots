@@ -48,7 +48,7 @@ getURL :: String -> Maybe String
 getURL message = message =~~ urlRegex
   where urlRegex :: String
         urlRegex = "(https?://[^ ]*)"
-        
+
 -- Find the title in the body (if any)
 getHTMLTitle :: String -> IO (Maybe T.Text)
 getHTMLTitle url = (getTitle =<<) <$> requestMaybe (getWith httpOptions url)
