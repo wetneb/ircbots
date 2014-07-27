@@ -68,6 +68,9 @@ getHTMLTitle url = (getTitle =<<) <$> requestMaybe (getWith httpOptions url)
           (TagText title:_) <- return $ dropWhile (not . isTagText) tags'
           return . head . TL.toChunks $ title
 
+-- Misleading name!
+-- When pdfinfo does not find a title, this actually reads
+-- the whole first page of the pdf (with pdftotext)
 getPDFTitle :: String -> IO (Maybe T.Text)
 getPDFTitle url = do
   r <- requestMaybe (getWith httpOptions url)
@@ -82,8 +85,7 @@ getPDFTitle url = do
           exitCode <- system "pdftotext -layout -f 1 -l 1 /run/ircbots/temp.pdf /run/ircbots/temp.txt"
           case exitCode of
             ExitFailure _ -> return Nothing
-            ExitSuccess -> do
-              Just <$> TIO.readFile "/run/ircbots/temp.txt"
+            ExitSuccess -> Just <$> TIO.readFile "/run/ircbots/temp.txt"
       Left err -> Nothing <$ logError (show err)
 
 requestMaybe :: IO a -> IO (Maybe a)
