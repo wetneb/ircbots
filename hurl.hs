@@ -37,11 +37,12 @@ httpOptions = defaults & redirects .~ 10
 -- Act depending on MIME type, doing nothing if we don't know how to handle it
 dispatchByHeader :: String -> Response () -> IO (Maybe T.Text)
 dispatchByHeader url response
-  | contentTypeIs "text/html" = getHTMLTitle url
+  | contentTypeIs "text/html" = (getHTMLTitle =<<) <$> body
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
-    getPDFTitle url
+    (maybe (return Nothing) getPDFTitle) =<< body
   | otherwise = return Nothing
   where contentTypeIs = (`BS.isPrefixOf` (response ^. responseHeader "Content-Type"))
+        body = ((^. responseBody) <$>) <$> requestMaybe (getWith httpOptions url)
 
 -- Find an URL in the message
 getURL :: String -> Maybe String
@@ -57,36 +58,33 @@ safeDecodeUtf8 :: BL.ByteString -> Maybe TL.Text
 safeDecodeUtf8 = hush . LE.decodeUtf8'
 
 -- Find the title in the body (if any)
-getHTMLTitle :: String -> IO (Maybe T.Text)
-getHTMLTitle url = (getTitle =<<) <$> requestMaybe (getWith httpOptions url)
-  where getTitle response = do -- in the Maybe monad
-          tags <- parseTags <$> (safeDecodeUtf8 $ response ^. responseBody)
-          -- that's what the fail method in Monad is used for!
-          -- (but it should really be mzero from MonadPlus)
-          -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
-          (_:tags') <- return $ dropWhile (not . isTagOpenName "title") tags
-          (TagText title:_) <- return $ dropWhile (not . isTagText) tags'
-          return . head . TL.toChunks $ title
+getHTMLTitle :: BL.ByteString -> Maybe T.Text
+getHTMLTitle body = do -- in the Maybe monad
+  tags <- parseTags <$> safeDecodeUtf8 body
+  -- that's what the fail method in Monad is used for!
+  -- (but it should really be mzero from MonadPlus)
+  -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
+  (_:tags') <- return $ dropWhile (not . isTagOpenName "title") tags
+  (TagText title:_) <- return $ dropWhile (not . isTagText) tags'
+  return . head . TL.toChunks $ title
 
 -- Misleading name!
 -- When pdfinfo does not find a title, this actually reads
 -- the whole first page of the pdf (with pdftotext)
-getPDFTitle :: String -> IO (Maybe T.Text)
-getPDFTitle url = do
-  r <- requestMaybe (getWith httpOptions url)
-  fmap join . forM r $ \r' -> do
-    BL.writeFile "/run/ircbots/temp.pdf" $ r' ^. responseBody
-    eitherInfo <- pdfInfo "/run/ircbots/temp.pdf"
-    case eitherInfo of
-      Right info -> case pdfInfoTitle info of
-        Just txt -> return . Just $ txt
-        Nothing -> do
-          -- TODO: handle exceptions
-          exitCode <- system "pdftotext -layout -f 1 -l 1 /run/ircbots/temp.pdf /run/ircbots/temp.txt"
-          case exitCode of
-            ExitFailure _ -> return Nothing
-            ExitSuccess -> Just <$> TIO.readFile "/run/ircbots/temp.txt"
-      Left err -> Nothing <$ logError (show err)
+getPDFTitle :: BL.ByteString -> IO (Maybe T.Text)
+getPDFTitle body = do
+  BL.writeFile "/run/ircbots/temp.pdf" body
+  eitherInfo <- pdfInfo "/run/ircbots/temp.pdf"
+  case eitherInfo of
+    Right info -> case pdfInfoTitle info of
+      Just txt -> return . Just $ txt
+      Nothing -> do
+        -- TODO: handle exceptions
+        exitCode <- system "pdftotext -layout -f 1 -l 1 /run/ircbots/temp.pdf /run/ircbots/temp.txt"
+        case exitCode of
+          ExitFailure _ -> return Nothing
+          ExitSuccess -> Just <$> TIO.readFile "/run/ircbots/temp.txt"
+    Left err -> Nothing <$ logError (show err)
 
 requestMaybe :: IO a -> IO (Maybe a)
 requestMaybe req = handle handleException $ Just <$> req
