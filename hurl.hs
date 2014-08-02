@@ -12,6 +12,7 @@ import Data.Text.Lazy.Encoding as LE
 import Data.Text.Encoding as SE
 import Data.Foldable (forM_)
 import Data.Traversable (forM)
+import Data.Monoid
 import Data.Maybe
 import Data.List
 import System.IO
@@ -66,7 +67,7 @@ getHTMLTitle url = (getTitle =<<) <$> requestMaybe (getWith httpOptions url)
           -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
           (_:tags') <- return $ dropWhile (not . isTagOpenName "title") tags
           (TagText title:_) <- return $ dropWhile (not . isTagText) tags'
-          return . head . TL.toChunks $ title
+          return . TL.toStrict $ title
 
 getPDFTitle :: String -> IO (Maybe T.Text)
 getPDFTitle url = do
@@ -106,6 +107,6 @@ main = forever $ do
   forM_ messageURL $ \url -> do
     title <- fetchTitle url
     forM_ title $ \t -> do
-      forM_ (take 3 . T.lines $ t) TIO.putStrLn
+      forM_ (take 3 . T.lines $ t) $ TIO.putStrLn . ("/say " <>)
       hFlush stdout
 
