@@ -38,7 +38,9 @@ httpOptions = defaults & redirects .~ 10
 -- Act depending on MIME type, doing nothing if we don't know how to handle it
 dispatchByHeader :: String -> Response () -> IO (Maybe T.Text)
 dispatchByHeader url response
-  | contentTypeIs "text/html" = (getHTMLTitle =<<) <$> body
+  | contentTypeIs "text/html; charset=utf-8" = ((getHTMLTitle <=< safeDecodeUtf8) =<<) <$> body
+  -- Default to ISO-8859-1, even if a different charset happens to be specified
+  | contentTypeIs "text/html" = (getHTMLTitle =<<) <$> (LE.decodeLatin1 <$>) <$> body
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
     (maybe (return Nothing) getPDFTitle) =<< body
   | otherwise = return Nothing
@@ -59,9 +61,9 @@ safeDecodeUtf8 :: BL.ByteString -> Maybe TL.Text
 safeDecodeUtf8 = hush . LE.decodeUtf8'
 
 -- Find the title in the body (if any)
-getHTMLTitle :: BL.ByteString -> Maybe T.Text
+getHTMLTitle :: TL.Text -> Maybe T.Text
 getHTMLTitle body = do -- in the Maybe monad
-  tags <- parseTags <$> safeDecodeUtf8 body
+  let tags = parseTags body
   -- that's what the fail method in Monad is used for!
   -- (but it should really be mzero from MonadPlus)
   -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
