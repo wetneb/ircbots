@@ -22,5 +22,5 @@ executable hurl
     ghc-options:    -O2 -optl-pthread
     extensions:     DoAndIfThenElse
     build-depends:  base, containers, mtl, tagsoup, regex-tdfa, wreq, process,
-                    http-client, lens, text, bytestring, pdfinfo
+                    http-client, lens, text, bytestring, pdfinfo, word8
 

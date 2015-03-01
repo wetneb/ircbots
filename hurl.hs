@@ -15,6 +15,7 @@ import Data.Traversable (forM)
 import Data.Monoid
 import Data.Maybe
 import Data.List
+import Data.Word8
 import System.IO
 import Text.Regex.TDFA
 import System.Process (system)
@@ -38,14 +39,15 @@ httpOptions = defaults & redirects .~ 10
 -- Act depending on MIME type, doing nothing if we don't know how to handle it
 dispatchByHeader :: String -> Response () -> IO (Maybe T.Text)
 dispatchByHeader url response
-  | contentTypeIs "text/html; charset=utf-8" = ((getHTMLTitle <=< safeDecodeUtf8) =<<) <$> body
+  | contentTypeIs "text/html;charset=utf-8" = ((getHTMLTitle <=< safeDecodeUtf8) =<<) <$> body
   -- Default to ISO-8859-1, even if a different charset happens to be specified
   | contentTypeIs "text/html" = (getHTMLTitle =<<) <$> (LE.decodeLatin1 <$>) <$> body
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
     (maybe (return Nothing) getPDFTitle) =<< body
   | otherwise = return Nothing
-  where contentTypeIs = (`BS.isPrefixOf` (response ^. responseHeader "Content-Type"))
+  where contentTypeIs = flip BS.isPrefixOf . normalize $ response ^. responseHeader "Content-Type"
         body = ((^. responseBody) <$>) <$> requestMaybe (getWith httpOptions url)
+        normalize = BS.map toLower . BS.filter (not . isSpace)
 
 -- Find an URL in the message
 getURL :: String -> Maybe String
