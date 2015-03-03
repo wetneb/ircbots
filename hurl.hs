@@ -15,7 +15,8 @@ import Data.Traversable (forM)
 import Data.Monoid
 import Data.Maybe
 import Data.List
-import Data.Word8
+import qualified Data.Word8 as W8
+import Data.Char
 import System.IO
 import Text.Regex.TDFA
 import System.Process (system)
@@ -39,15 +40,21 @@ httpOptions = defaults & redirects .~ 10
 -- Act depending on MIME type, doing nothing if we don't know how to handle it
 dispatchByHeader :: String -> Response () -> IO (Maybe T.Text)
 dispatchByHeader url response
-  | contentTypeIs "text/html;charset=utf-8" = ((getHTMLTitle <=< safeDecodeUtf8) =<<) <$> body
-  -- Default to ISO-8859-1, even if a different charset happens to be specified
-  | contentTypeIs "text/html" = (getHTMLTitle =<<) <$> (LE.decodeLatin1 <$>) <$> body
+  -- Just try UTF-8 then Latin-1. This is... not efficient.
+  | contentTypeIs "text/html" = do
+      html <- body
+      return $ getHTMLTitle =<<
+        first ([(safeDecodeUtf8 =<<), (LE.decodeLatin1 <$>)] <*> pure html)
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
     (maybe (return Nothing) getPDFTitle) =<< body
   | otherwise = return Nothing
   where contentTypeIs = flip BS.isPrefixOf . normalize $ response ^. responseHeader "Content-Type"
         body = ((^. responseBody) <$>) <$> requestMaybe (getWith httpOptions url)
-        normalize = BS.map toLower . BS.filter (not . isSpace)
+        normalize = BS.map W8.toLower . BS.filter (not . W8.isSpace)
+
+-- Find the first Just element if it exists
+first :: [Maybe a] -> Maybe a
+first = listToMaybe . catMaybes
 
 -- Find an URL in the message
 getURL :: String -> Maybe String
@@ -111,6 +118,10 @@ main = forever $ do
   forM_ messageURL $ \url -> do
     title <- fetchTitle url
     forM_ title $ \t -> do
-      forM_ (take 3 . T.lines $ t) $ TIO.putStrLn . ("/say " <>)
+      forM_ (
+        take 3 .
+        filter (not . T.null) .
+        map (T.dropWhile isSpace) .
+        T.lines $ t) $ TIO.putStrLn . ("/say " <>)
       hFlush stdout
 
