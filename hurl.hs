@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, LambdaCase #-}
 
 import Control.Applicative
 import Control.Monad hiding (forM_, forM)
@@ -8,8 +8,8 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.IO as TIO
-import Data.Text.Lazy.Encoding as LE
-import Data.Text.Encoding as SE
+import Data.Text.Lazy.Encoding (decodeUtf8, decodeLatin1, decodeUtf8')
+import Data.Text.Encoding.Error
 import Data.Foldable (forM_)
 import Data.Traversable (forM)
 import Data.Monoid
@@ -29,6 +29,8 @@ import Network.Wreq
 import Text.HTML.TagSoup
 import Text.PDF.Info
 
+import Debug.Trace
+
 -- Error logging to stderr
 logError :: String -> IO ()
 logError str = hPutStr stderr (str ++ "\n")
@@ -43,8 +45,8 @@ dispatchByHeader url response
   -- Just try UTF-8 then Latin-1. This is... not efficient.
   | contentTypeIs "text/html" = do
       html <- body
-      return $ getHTMLTitle =<<
-        first ([(safeDecodeUtf8 =<<), (LE.decodeLatin1 <$>)] <*> pure html)
+      first $ forceTitle <$> (getHTMLTitle =<<)
+        <$> ([(decodeUtf8 <$>), (decodeLatin1 <$>)] <*> pure html)
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
     (maybe (return Nothing) getPDFTitle) =<< body
   | otherwise = return Nothing
@@ -52,9 +54,25 @@ dispatchByHeader url response
         body = ((^. responseBody) <$>) <$> requestMaybe (getWith httpOptions url)
         normalize = BS.map W8.toLower . BS.filter (not . W8.isSpace)
 
--- Find the first Just element if it exists
-first :: [Maybe a] -> Maybe a
-first = listToMaybe . catMaybes
+-- Evaluate the title while catching decoding exceptions
+forceTitle :: Maybe T.Text -> IO (Maybe T.Text)
+forceTitle t = do
+  t' <- join <$> eval t
+  join <$> forM t' eval
+  where
+    eval t = catch (Just <$> evaluate t)
+      (\case
+        DecodeError _ _ -> return Nothing
+        e -> throw e)
+
+-- Stop evaluating after finding the first Just element if it exists
+first :: [IO (Maybe a)] -> IO (Maybe a)
+first [] = return Nothing
+first (m : ms) = do
+  x <- m
+  case x of
+    Nothing -> first ms
+    Just _ -> return x
 
 -- Find an URL in the message
 getURL :: String -> Maybe String
@@ -67,12 +85,14 @@ hush (Left _) = Nothing
 hush (Right x) = Just x
 
 safeDecodeUtf8 :: BL.ByteString -> Maybe TL.Text
-safeDecodeUtf8 = hush . LE.decodeUtf8'
+safeDecodeUtf8 = hush . decodeUtf8'
 
 -- Find the title in the body (if any)
+-- Might fail due to lazy decoding of an invalid ByteString,
+-- the error can be caught by forceTitle
 getHTMLTitle :: TL.Text -> Maybe T.Text
 getHTMLTitle body = do -- in the Maybe monad
-  let tags = parseTags body
+  let tags = canonicalizeTags . parseTags $ body
   -- that's what the fail method in Monad is used for!
   -- (but it should really be mzero from MonadPlus)
   -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
