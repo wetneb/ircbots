@@ -105,18 +105,22 @@ getHTMLTitle body = do -- in the Maybe monad
 -- the whole first page of the pdf (with pdftotext)
 getPDFTitle :: BL.ByteString -> IO (Maybe T.Text)
 getPDFTitle body = do
-  BL.writeFile "/run/ircbots/temp.pdf" body
-  eitherInfo <- pdfInfo "/run/ircbots/temp.pdf"
+  BL.writeFile tmpPDF body
+  eitherInfo <- pdfInfo tmpPDF
   case eitherInfo of
     Right info -> case pdfInfoTitle info of
-      Just txt -> return . Just $ txt
-      Nothing -> do
+      Just txt | not (T.null txt) -> traceShow txt $ return . Just $ txt
+      _ -> do
         -- TODO: handle exceptions
-        exitCode <- system "pdftotext -layout -f 1 -l 1 /run/ircbots/temp.pdf /run/ircbots/temp.txt"
+        exitCode <- system $ "pdftotext -layout -f 1 -l 1 " ++ tmpPDF
         case exitCode of
           ExitFailure _ -> return Nothing
-          ExitSuccess -> Just <$> TIO.readFile "/run/ircbots/temp.txt"
+          ExitSuccess -> Just <$> TIO.readFile tmpTXT
     Left err -> Nothing <$ logError (show err)
+  where
+    tmp = "/tmp/hurl"
+    tmpPDF = tmp ++ ".pdf"
+    tmpTXT = tmp ++ ".txt"
 
 requestMaybe :: IO a -> IO (Maybe a)
 requestMaybe req = handle handleException $ Just <$> req
