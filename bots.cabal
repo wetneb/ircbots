@@ -20,7 +20,8 @@ source-repository head
 executable hurl
     main-is:        hurl.hs
     ghc-options:    -O2 -optl-pthread
-    extensions:     DoAndIfThenElse
+    extensions:     OverloadedStrings, LambdaCase
     build-depends:  base, containers, mtl, tagsoup, regex-tdfa, wreq, process,
-                    http-client, lens, text, bytestring, pdfinfo, word8
+                    http-client, http-types, lens, text, bytestring, pdfinfo,
+                    word8
 
