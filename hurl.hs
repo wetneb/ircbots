@@ -166,9 +166,11 @@ main = forever $ do
     title <- fetchAndRetry url
     forM_ title $ \t -> do
       forM_ (
-        take 3 .
-        filter (not . T.null) .
-        map (T.dropWhile isSpace) .
-        T.lines $ t) $ TIO.putStrLn . ("/say " <>)
+        take 3 . -- at most 3 lines
+        filter (not . T.null) . -- no empty line
+        map (T.dropWhile isSpace) . -- trim (finds more empty lines)
+        T.lines . -- multiline title
+        T.take 200 $ -- max 200 chars
+        t) $ TIO.putStrLn . ("/say " <>)
       hFlush stdout
 
