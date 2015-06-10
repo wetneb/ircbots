@@ -18,7 +18,6 @@ import Data.List
 import qualified Data.Word8 as W8
 import Data.Char
 import System.IO
-import Text.Regex.TDFA
 import System.Process (system)
 import System.Exit (ExitCode(..))
 
@@ -77,10 +76,10 @@ first (m : ms) = do
     Just _ -> return x
 
 -- Find an URL in the message
-getURL :: String -> Maybe String
-getURL message = message =~~ urlRegex
-  where urlRegex :: String
-        urlRegex = "(https?://[^ ]*)"
+getURL :: String -> [String]
+getURL = filter looksLikeURL . words
+  where looksLikeURL :: String -> Bool
+        looksLikeURL w = "http://" `isPrefixOf` w || "https://" `isPrefixOf` w
 
 hush :: Either a b -> Maybe b
 hush (Left _) = Nothing
