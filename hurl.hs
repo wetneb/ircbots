@@ -75,11 +75,13 @@ first (m : ms) = do
     Nothing -> first ms
     Just _ -> return x
 
--- Find an URL in the message
+-- Find URLs in the message
 getURL :: String -> [String]
-getURL = filter looksLikeURL . words
-  where looksLikeURL :: String -> Bool
-        looksLikeURL w = "http://" `isPrefixOf` w || "https://" `isPrefixOf` w
+getURL = words >=> tails >=> looksLikeURL
+  where looksLikeURL :: String -> [String]
+        looksLikeURL x = do
+          guard ("http://" `isPrefixOf` x || "https://" `isPrefixOf` x)
+          return x
 
 hush :: Either a b -> Maybe b
 hush (Left _) = Nothing
