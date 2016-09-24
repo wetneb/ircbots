@@ -1,22 +1,35 @@
+-- hurl looks for URLs in IRC discussions and replies with their titles.
+--
+-- Usage:
+--
+-- > hurl HOST PORT NICK [CHANNEL...]
+--
+-- Example:
+--
+-- > hurl event.example.com 1337 hurlbot #forgefer
+--
+-- Also responds to /invite and private messages.
+
 {-# LANGUAGE OverloadedStrings, LambdaCase #-}
 
-import Control.Applicative
-import Control.Monad hiding (forM_, forM)
+import Control.Monad
+import Control.Monad.IO.Class
 import Control.Exception
+
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BS8
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.IO as TIO
 import Data.Text.Lazy.Encoding (decodeUtf8, decodeLatin1, decodeUtf8')
 import Data.Text.Encoding.Error
-import Data.Foldable (forM_)
-import Data.Traversable (forM)
-import Data.Monoid
-import Data.Maybe
-import Data.List
-import qualified Data.Word8 as W8
+
 import Data.Char
+import Data.Foldable (for_)
+import Data.Traversable (for)
+import qualified Data.Word8 as W8
+import System.Environment
 import System.IO
 import System.Process (system)
 import System.Exit (ExitCode(..))
@@ -25,6 +38,7 @@ import Control.Lens
 -- import qualified Data.Text.ICU as ICU
 import Network.HTTP.Client (HttpException(StatusCodeException))
 import Network.HTTP.Types.Status
+import Network.IRC.Client
 import Network.Wreq
 import Text.HTML.TagSoup
 import Text.PDF.Info
@@ -45,10 +59,17 @@ dispatchByHeader url response
   -- Just try UTF-8 then Latin-1. This is... not efficient.
   | contentTypeIs "text/html" = do
       html <- body
-      first $ forceTitle <$> getHTMLTitle
-        <$> ([decodeUtf8, decodeLatin1] <*> pure html)
+      (fmap . fmap)
+        (T.unwords . T.words)
+        . first [decodeUtf8, decodeLatin1] $ \decode ->
+          forceTitle . getHTMLTitle . decode $ html
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
-      getPDFTitle =<< body
+      (fmap . fmap)
+        (T.intercalate " | " .
+          filter (not . T.null) .
+          fmap (T.dropWhile isSpace) .
+          T.lines)
+        (getPDFTitle =<< body)
   | otherwise = return Nothing
   where contentTypeIs = flip BS.isPrefixOf . normalize $ response ^. responseHeader "Content-Type"
         body = (^. responseBody) <$> httpGet url
@@ -59,7 +80,7 @@ dispatchByHeader url response
 forceTitle :: Maybe T.Text -> IO (Maybe T.Text)
 forceTitle t = do
   t' <- join <$> eval t
-  join <$> forM t' eval
+  join <$> for t' eval
   where
     eval t = catch (Just <$> evaluate t)
       (\case
@@ -67,20 +88,18 @@ forceTitle t = do
         e -> throw e)
 
 -- Stop evaluating after finding the first Just element if it exists
-first :: [IO (Maybe a)] -> IO (Maybe a)
-first [] = return Nothing
-first (m : ms) = do
-  x <- m
-  case x of
-    Nothing -> first ms
-    Just _ -> return x
+first :: Monad m => [a] -> (a -> m (Maybe b)) -> m (Maybe b)
+first [] _ = return Nothing
+first (m : ms) f = f m >>= \case
+  Nothing -> first ms f
+  x -> return x
 
 -- Find URLs in the message
-getURL :: String -> [String]
-getURL = words >=> tails >=> looksLikeURL
-  where looksLikeURL :: String -> [String]
+getURL :: T.Text -> [T.Text]
+getURL = T.words >=> T.tails >=> looksLikeURL
+  where looksLikeURL :: T.Text -> [T.Text]
         looksLikeURL x = do
-          guard ("http://" `isPrefixOf` x || "https://" `isPrefixOf` x)
+          guard ("http://" `T.isPrefixOf` x || "https://" `T.isPrefixOf` x)
           return x
 
 hush :: Either a b -> Maybe b
@@ -160,18 +179,51 @@ fetchAndRetry url = do
         hush' = join . hush
         retry = logError "Retrying..." >> hush' <$> fetch (init url)
 
-main :: IO ()
-main = forever $ do
-  messageURL <- getURL <$> getLine
-  forM_ messageURL $ \url -> do
-    title <- fetchAndRetry url
-    forM_ title $ \t -> do
-      forM_ (
-        take 3 . -- at most 3 lines
-        filter (not . T.null) . -- no empty line
-        map (T.dropWhile isSpace) . -- trim (finds more empty lines)
-        T.lines . -- multiline title
-        T.take 200 $ -- max 200 chars
-        t) $ TIO.putStrLn . ("/say " <>)
-      hFlush stdout
+msgToText :: Either b T.Text -> Maybe T.Text
+msgToText (Right r) = Just r
+msgToText _ = Nothing
 
+hurlHandler :: EventHandler s
+hurlHandler = EventHandler
+  { _description = "Detects URLs in messages and replies with their titles."
+  , _matchType = EPrivmsg
+  , _eventFunc = handle
+  } where
+    handle event@(Event _ _ (Privmsg _ msg)) =
+      for_ (msgToText msg) $ \txt -> do
+        let urls = getURL txt
+        for_ urls $ \url -> do
+          title <- liftIO . fetchAndRetry $ T.unpack url
+          for_ title $ reply event . T.take 200
+    handle _ = error "Should not happen"
+
+commandHandler :: EventHandler s
+commandHandler = EventHandler
+  { _description = "Joins invited-to channels"
+  , _matchType = EInvite
+  , _eventFunc = handle
+  } where
+    handle (Event _ _ (Invite chan _)) = send (Join chan)
+    handle _ = error "Should not happen"
+
+hurlConf :: T.Text -> [T.Text] -> InstanceConfig s
+hurlConf nick channels = conf
+  { _channels = channels
+  , _eventHandlers = handlers
+  } where
+    conf = defaultIRCConf nick
+    handlers = hurlHandler : commandHandler : _eventHandlers conf
+
+main :: IO ()
+main = getArgs >>= \case
+  host_ : port_ : nick_ : channels_ -> do
+    let host = BS8.pack host_
+        port = read port_
+        nick = T.pack nick_
+        channels = fmap T.pack channels_
+    conn <- connect host port 1
+    let conf = hurlConf nick channels
+    start conn conf
+  _ -> do
+    prog <- getProgName
+    putStrLn $ "Usage: " ++ prog ++ " HOST PORT NICK [CHANNEL...]"
