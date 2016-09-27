@@ -66,6 +66,7 @@ dispatchByHeader url response
   | contentTypeIs "application/pdf" || contentTypeIs "application/x-pdf" =
       (fmap . fmap)
         (T.intercalate " | " .
+          take 3 .
           filter (not . T.null) .
           fmap (T.dropWhile isSpace) .
           T.lines)
@@ -119,8 +120,8 @@ getHTMLTitle body = do -- in the Maybe monad
   -- (but it should really be mzero from MonadPlus)
   -- this is NOT equivalent to 'let (_:tags') = dropWhile ...'
   (_:tags') <- return $ dropWhile (not . isTagOpenName "title") tags
-  (TagText title:_) <- return $ dropWhile (not . isTagText) tags'
-  return . TL.toStrict $ title
+  let titleFragments = takeWhile (not . isTagCloseName "title") tags'
+  return . TL.toStrict . renderTags $ titleFragments
 
 -- Misleading name!
 -- When pdfinfo does not find a title, this actually reads
